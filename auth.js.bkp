@@ -1,0 +1,225 @@
+// Custom Verifier Sample Code
+
+import { AuthProvider } from "@arcana/auth";
+
+/* Arcana Auth Methods */
+
+let provider;
+let from = ""; // get from eth_accounts call
+
+const auth = new AuthProvider("xar_test_011f638fd124c23667958d4bcbb717226bf9da1c", {
+  network: "dev",
+  position: "right",
+  theme: "light", //defaults to dark
+  alwaysVisible: true, //defaults to true which is Full UI mode
+  //appMode: "1",
+  connectOptions: {
+    compact: true
+  },
+  chainConfig: {
+    chainId: '80002', //Polygon Amoy
+  }
+});
+
+provider = auth.provider;
+
+// initialize AuthProvider
+
+async function initAuth() {
+  console.log("Intantiating Auth... ");
+  console.time("auth_init");
+  try {
+    await auth.init();
+  } catch (e) {
+    console.log("Exception! in auth.init()",e);
+  }
+  console.timeEnd("auth_init");
+  console.log("Init auth complete!");
+}
+
+// Get Available Logins
+
+async function getLogins() {
+  console.log("Get logins");
+  const logins = await auth.getLogins();
+  console.log("Available Auth Logins: ",{ logins });
+}
+
+async function getAccounts() {
+  const accounts = await auth.provider.request({ method: "eth_accounts" });
+  console.log("Accounts: ",{ accounts });
+  from = accounts[0];
+}
+
+//loginWithOTP email callback
+
+async function emailCallback() {
+  console.log("Received emailsent callback");
+}
+
+async function loginWithOTP(email) {
+  try {
+    console.log("Login OTP will be sent to:", email);
+
+    const login = await auth.loginWithOTPStart(email)
+    await login.begin()
+
+    if(login.isCompleteRequired) {
+      console.log("isCompleteRequired is True");
+      await loginWithOTPComplete(email, emailCallback)
+    }
+  } catch (e) {
+    console.log("Exception! in auth.loginWithOTPStart()",e);
+  } 
+
+}
+
+// Import express for creating API's endpoints
+//const express = require("express");
+import express from "express";
+
+// Import jwt for API's endpoints authentication
+//const jwt = require("jsonwebtoken");
+import jwt from "jsonwebtoken";
+
+// Creates an Express application, initiate
+// express top level function
+const app = express();
+
+// A port for serving API's
+const port = 9980;
+
+// A fake database object
+let database = [
+	{
+		name: "admin",
+		password: "abc",
+	},
+	{
+		name: "arcana",
+		password: "123",
+	},
+];
+
+// A demo get route
+app.get("/", (req, res) => {
+	res.json({
+		route: "/",
+		authentication: false,
+	});
+});
+
+// Allow json data
+app.use(express.json());
+
+// Login route
+app.post("/login", (req, res) => {
+	// Get the name to the json body data
+	const name = req.body.name;
+	// Get the password to the json body data
+	const password = req.body.password;
+	// Make two variable for further use
+	let isValidUser = false;
+	let userIndex = null;
+	// iterate a loop to the data items and
+	// check what data are matched.
+	for (let i = 0; i < database.length; i++) {
+		// If data name are matched so check
+		// the password are correct or not
+		if (database[i].name === name
+			&& database[i].password === password) {
+
+			// If both are correct so make 
+			// isValidUser variable true
+			isValidUser = true;
+
+			// And store the data index
+			userIndex = i;
+
+			// Break the loop after matching successfully
+			break;
+		}
+	}
+	// If isValideUser is true, then create a
+	// token and pass to the response
+	if (isValidUser) {
+		// The jwt.sign method are used
+		// to create token
+		const token = jwt.sign(database[userIndex], "secret");
+
+		// Pass the data or token in response
+		res.json({
+			login: true,
+			token: token,
+			data: database[userIndex],
+		});
+	} else {
+
+		// If isValidUser is false return the error
+		res.json({
+			login: false,
+			error: "Not a valid user.",
+		});
+	}
+});
+
+// Verify route
+app.get("/verify", (req, res) => {
+
+	// Get token value to the json body
+	const token = req.body.token;
+
+	// If the token is present
+	if (token) {
+
+		// Verify the token using jwt.verify method
+		const decode = jwt.verify(token, "secret");
+
+		// Return response with decode data
+		res.json({
+			login: true,
+			data: decode,
+		});
+	} else {
+
+		// Return response with error
+		res.json({
+			login: false,
+			data: "error",
+		});
+	}
+});
+
+// Arcana Login route
+app.get("/arcana", (req, res) => {
+
+    // Test
+    console.log("Arcana: Testing");
+
+    // Get token value to the json body
+    const token = req.body.token;
+
+    const email = req.body.email;
+
+    initAuth();
+
+    res.json({
+        login: true,
+        token: token,
+        email: email, 
+        address: from,
+    });
+});
+
+
+app._router.stack.forEach(function(r){
+  if (r.route && r.route.path){
+    console.log(r.route.path)
+  }
+})
+
+// Listen the server
+app.listen(port, () => {
+	console.log(`Custom User Verifier Server is running : 
+	http://localhost:${port}/`);
+});
